@@ -1,11 +1,12 @@
-import { View, div, svg } from "gpui-kit";
+import { View, div } from "gpui-kit";
 import { v_flex, h_flex, TextareaState, Textarea, TextView, InputState, Input, Checkbox } from "gpui-base";
-import { spaces, theme, settings, run, home, window, exec, readTextFile, writeTextFile } from "herdr";
+import { spaces, theme, settings, home, window, exec, readTextFile, writeTextFile } from "herdr";
 import { blocks, toggleTask } from "./markdown.js";
 
 export default class Notes extends View {
   init(_props, cx) {
     this.pads = new Map();
+    this.menu = false;
     this.appearance = false;
     this.prefs = JSON.parse(localStorage.getItem("appearance") ?? "{}");
     this.fontInput = InputState.new({ placeholder: "Follow Herdr", value: this.prefs.font ?? "" });
@@ -135,16 +136,16 @@ export default class Notes extends View {
     if (block.type === "heading") {
       const level = block.text.match(/^\s*(#+)/)[1].length;
       content = div().pt(level === 1 ? 10 : 6).pb(3).font_semibold()
-        .text_size(size + (level === 1 ? 10 : level === 2 ? 5 : 2))
-        .text_color(level === 1 ? t.ansi5 : level === 2 ? t.ansi4 : t.ansi6)
+        .text_size(size + (level === 1 ? 8 : level === 2 ? 4 : 2))
+        .text_color(t.foreground)
         .child(block.text.replace(/^\s*#+\s+/, "").trimEnd());
     } else if (block.type === "task") {
       const match = block.text.match(/^(\s*[-*+] \[)([ xX])\] (.*)/);
       const checked = match[2] !== " ";
-      content = h_flex().items_start().gap(9).py(3)
+      content = h_flex().items_start().gap(9).py(2)
         .child(Checkbox.new(`task-${pad.id}-${block.start}`).id(`task-${block.start}`).checked(checked)
-          .accessibility_label(match[3]).mt(3).size(17).flex_none().rounded(5)
-          .border_1().border_color(checked ? t.ansi6 : t.input).bg(checked ? t.ansi6 : t.background)
+          .accessibility_label(match[3]).mt(3).size(15).flex_none().rounded(4)
+          .border_1().border_color(checked ? t.accent : t.input).bg(checked ? t.accent : t.background)
           .text_color(t.background).text_size(12).items_center().justify_center().flex().cursor_pointer()
           .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
           .on_change((_checked, cx) => {
@@ -154,8 +155,8 @@ export default class Notes extends View {
           .child(TextView.markdown(`task-label-${pad.id}-${block.start}`, checked ? `~~${match[3]}~~` : match[3]).selectable(false)));
     } else {
       content = div().min_w(0)
-        .when(block.type === "code", el => el.p(12).rounded(8).bg(t.chrome).text_color(t.ansi3))
-        .when(block.type === "quote", el => el.pl(12).border_l(3).border_color(t.ansi5).text_color(t.muted))
+        .when(block.type === "code", el => el.rounded(6).text_color(t.muted))
+        .when(block.type === "quote", el => el.pl(12).border_l(2).border_color(t.accent).text_color(t.muted))
         .child(TextView.markdown(`note-block-${pad.id}-${block.start}`,
           block.type === "quote" ? block.text.replace(/^ {0,3}> ?/gm, "") : block.text).selectable(false)
           .on_link_click((url, cx) => { cx.open_url(url); cx.stop_propagation(); }));
@@ -171,7 +172,7 @@ export default class Notes extends View {
     const leading = this.prefs.leading ?? 1.6;
     const font = this.prefs.font || s.ui_font_family || "Geist";
     const button = (id, label, action, selected = false) => div().id(id).px(7).py(4).rounded(6).cursor_pointer()
-      .bg(selected ? t.selected : t.chrome).text_color(selected ? t.foreground : t.muted)
+      .when(selected, el => el.bg(t.selected)).text_color(selected ? t.foreground : t.muted)
       .hover(el => el.bg(t.hover).text_color(t.foreground)).on_click(action).child(label);
     const document = pad.loading
       ? div().text_color(t.dim).child("Opening your notebook…")
@@ -183,38 +184,48 @@ export default class Notes extends View {
         : v_flex().id("notes-reading").size_full().min_w(0).gap(5).overflow_y_scrollbar().cursor_text()
           .when(Boolean(pad.text.trim()), el => el.children(blocks(pad.text).map(b => this.section(pad, b, t, size))))
           .when(!pad.text.trim(), el => el.child(div().text_color(t.dim).child("Start writing…")));
-    return v_flex().size_full().min_w(0).min_h(0).rounded(10).border_1().border_color(t.border)
+    const closeMenu = cx => { this.menu = false; this.appearance = false; cx.notify(); };
+    const menuRow = (id, label, action) => div().id(id).w_full().px(12).py(8).rounded(5).cursor_pointer()
+      .text_size(12).text_color(t.foreground).hover(el => el.bg(t.hover)).on_click(action).child(label);
+    return v_flex().relative().size_full().min_w(0).min_h(0).rounded(10)
       .bg(t.background).text_color(t.foreground).font_family(font).text_size(size).line_height(`${size * leading}px`).overflow_hidden()
-      .child(h_flex().h(46).flex_none().px(13).gap(8).items_center().bg(t.chrome).border_b(1).border_color(t.border)
-        .child(svg("mods/notes/note.svg").size(16).text_color(t.ansi5))
+      .on_mouse_down_out((_e, cx) => { if (this.menu) closeMenu(cx); })
+      .child(h_flex().h(36).flex_none().px(24).gap(9).items_center()
         .child(div().text_size(12).font_semibold().child("Notes"))
-        .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(t.muted).child(space.name))
+        .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(t.dim).child(space.name))
         .when(Boolean(pad.saving), el => el.child(div().text_size(10).text_color(t.dim).child("Saving…")))
-        .child(button("notes-type", "Aa", (_e, cx) => { this.appearance = !this.appearance; cx.notify(); }, this.appearance))
-        .child(button("notes-close", "×", () => run("layout.hide", { id: "panel" }))))
-      .when(this.appearance, el => el.child(v_flex().px(15).py(12).gap(9).bg(t.chrome).border_b(1).border_color(t.border)
-        .child(h_flex().gap(6).items_center().text_size(11)
-          .child(button("font-herdr", "Follow Herdr", (_e, cx) => { this.fontInput.set_value(""); this.preference("font", "", cx); this.preference("size", null, cx); this.preference("leading", null, cx); }))
-          .child(button("font-smaller", "A−", (_e, cx) => this.preference("size", Math.max(11, size - 1), cx)))
-          .child(div().text_color(t.muted).child(String(size)))
-          .child(button("font-larger", "A+", (_e, cx) => this.preference("size", Math.min(24, size + 1), cx))))
-        .child(Input.new(this.fontInput).h(30).px(8).rounded(6).border_1().border_color(t.input).bg(t.background).text_size(12))
-        .child(div().text_size(10.5).text_color(t.dim).child("Font family · leave empty to follow Herdr"))
-        .child(h_flex().gap(5).text_size(11).children([[1.4, "Compact"], [1.6, "Comfortable"], [1.85, "Spacious"]].map(([value, label]) =>
-          button(`leading-${value}`, label, (_e, cx) => this.preference("leading", value, cx), leading === value))))))
-      .when(Boolean(pad.error), el => el.child(v_flex().px(15).py(10).gap(6).text_size(11).text_color(t.ansi1)
+        .child(button("notes-menu", "…", (_e, cx) => {
+          this.menu = !this.menu; if (!this.menu) this.appearance = false; cx.notify();
+        }, this.menu).accessibility_label("Notes menu").tooltip("Appearance and file actions")))
+      .when(Boolean(pad.error), el => el.child(v_flex().px(24).py(10).gap(6).text_size(11).text_color(t.ansi1)
         .child(pad.error).child(button("notes-retry", "Retry", (_e, cx) => {
           if (pad.id) this.save(pad, cx);
           else { this.directory = this.prepareDirectory(); this.load(space, cx); }
         }))))
-      .child(div().id("notes-document").flex_1().min_h(0).min_w(0).px(20).py(16)
-        .on_click((_e, cx) => this.begin(pad, cx))
+      .child(div().id("notes-document").flex_1().min_h(0).min_w(0).px(28).pt(24).pb(28)
+        .on_click((_e, cx) => { if (this.menu) closeMenu(cx); this.begin(pad, cx); })
         .on_mouse_down_out((_e, cx) => this.finish(pad, cx)).child(document))
-      .child(div().id("notes-file").flex_none().px(15).py(9).border_t(1).border_color(t.border).text_size(10.5)
-        .text_color(t.dim).truncate().cursor_pointer().hover(el => el.text_color(t.accent))
-        .tooltip(`${pad.path}\nClick to reveal · Right-click to copy path`)
-        .on_mouse_down("right", (_e, cx) => { cx.write_to_clipboard(pad.path); cx.stop_propagation(); })
-        .on_click((_e, cx) => this.reveal(pad, cx)).child(pad.path.replace(this.dir, "…/Herdr/notes")));
+      .when(this.menu, el => el.child(v_flex().id("notes-menu-body").absolute().top(34).right(12).w(252)
+        .p(6).gap(2).rounded(8).bg(t.popover).border_1().border_color(t.border).shadow_md()
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+        .child(menuRow("notes-appearance", "Appearance", (_e, cx) => { this.appearance = !this.appearance; cx.notify(); }))
+        .when(this.appearance, el => el.child(v_flex().px(6).py(8).gap(9)
+          .child(h_flex().gap(5).items_center().text_size(11)
+            .child(button("font-herdr", "Follow Herdr", (_e, cx) => {
+              this.fontInput.set_value(""); this.preference("font", "", cx);
+              this.preference("size", null, cx); this.preference("leading", null, cx);
+            }))
+            .child(button("font-smaller", "A−", (_e, cx) => this.preference("size", Math.max(11, size - 1), cx)))
+            .child(div().text_color(t.muted).child(String(size)))
+            .child(button("font-larger", "A+", (_e, cx) => this.preference("size", Math.min(24, size + 1), cx))))
+          .child(Input.new(this.fontInput).h(30).px(8).rounded(5).border_1().border_color(t.input).bg(t.background).text_size(12))
+          .child(div().text_size(10).text_color(t.dim).child("Font family · empty follows Herdr"))
+          .child(h_flex().gap(3).text_size(10).children([[1.4, "Compact"], [1.6, "Normal"], [1.85, "Roomy"]].map(([value, label]) =>
+            button(`leading-${value}`, label, (_e, cx) => this.preference("leading", value, cx), leading === value))))))
+        .child(menuRow("notes-reveal", "Reveal file", (_e, cx) => { closeMenu(cx); this.reveal(pad, cx); }))
+        .child(menuRow("notes-copy-path", "Copy path", (_e, cx) => { cx.write_to_clipboard(pad.path); closeMenu(cx); }))
+        .child(div().px(12).py(6).text_size(10).text_color(t.dim).truncate().tooltip(pad.path)
+          .child(pad.path.replace(this.dir, "…/Herdr/notes")))));
   }
 
   async close() {

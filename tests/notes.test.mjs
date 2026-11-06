@@ -9,11 +9,11 @@ const source = readFileSync(new URL("../mods/notes/main.js", import.meta.url), "
 
 function setup({ store = new Map(), files = new Map(), settings = {} } = {}) {
   let active = { id: "one", name: "First space", active: true };
-  let rendering = false, failWrites = false, writeGate;
+  let rendering = false, failWrites = false, writeGate, clipboard;
   const tasks = [], timers = [], elements = new Map(), writes = [];
   const cx = {
     notify() { assert.equal(rendering, false, "notify must run outside render"); },
-    stop_propagation() {}, sleep: async () => {},
+    stop_propagation() {}, sleep: async () => {}, write_to_clipboard(value) { clipboard = value; },
     spawn(fn) { tasks.push(fn(cx)); },
     timer: { after(_ms, fn) {
       const timer = { cancelled: false, cancel() { this.cancelled = true; }, fn };
@@ -68,7 +68,7 @@ function setup({ store = new Map(), files = new Map(), settings = {} } = {}) {
   const view = new Notes();
   view.init({}, cx);
   return {
-    view, cx, store, files, tasks, writes, elements, blocks, toggleTask,
+    view, cx, store, files, tasks, writes, elements, blocks, toggleTask, get clipboard() { return clipboard; },
     select(id) { active = { id, name: id, active: true }; },
     failWrites(value) { failWrites = value; }, gate(promise) { writeGate = promise; },
     async settle() {
@@ -225,4 +225,21 @@ test("the raw editor inherits Herdr's normalized font settings and follows Aa ch
   app.render();
   assert.equal(app.elements.get("raw-editor").styles.font_family, "Georgia");
   assert.equal(app.elements.get("raw-editor").styles.text_size, 20);
+});
+
+
+test("the single menu exposes appearance and file actions without editing the note", async () => {
+  const text = "A quiet thought";
+  const app = setup({ files: new Map([[path, text]]) }); await app.settle();
+  app.render();
+  app.elements.get("notes-menu").handlers.on_click({}, app.cx); app.render();
+  assert.equal(app.view.menu, true);
+  app.elements.get("notes-appearance").handlers.on_click({}, app.cx); app.render();
+  assert.equal(app.view.appearance, true);
+  app.elements.get("notes-copy-path").handlers.on_click({}, app.cx);
+  assert.equal(app.clipboard, path);
+  assert.equal(app.view.menu, false);
+  assert.equal(app.view.pads.get("one").editing, undefined);
+  assert.equal(app.files.get(path), text);
+  assert.equal(app.writes.length, 0);
 });
