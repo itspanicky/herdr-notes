@@ -8,16 +8,24 @@ const source = readFileSync(new URL("../mods/notes/main.js", import.meta.url), "
 
 function setup(store = new Map()) {
   let active = { id: "one", name: "First space", active: true };
+  let rendering = false;
   const tasks = [];
-  const cx = { notify() {}, spawn(fn) { tasks.push(fn(cx)); } };
+  const cx = {
+    notify() { assert.equal(rendering, false, "notify must run outside render"); },
+    sleep: async () => {},
+    spawn(fn) { tasks.push(fn(cx)); },
+  };
   const chain = () => new Proxy({}, { get: () => () => chain() });
   const context = vm.createContext({
     View: class {}, div: chain, svg: chain, v_flex: chain, h_flex: chain,
     TextView: { markdown: chain }, Editor: { new: chain },
-    EditorState: { new: ({ value }) => ({
-      text: value, handlers: {}, value() { return this.text; },
-      on(event, handler) { this.handlers[event] = handler; },
-    }) },
+    EditorState: { new: ({ value }) => {
+      assert.equal(rendering, false, "native editors must be created outside render");
+      return {
+        text: value, handlers: {}, value() { return this.text; },
+        on(event, handler) { this.handlers[event] = handler; },
+      };
+    } },
     localStorage: {
       getItem: key => store.get(key) ?? null,
       setItem: (key, value) => store.set(key, value), flush: async () => {},
@@ -27,7 +35,15 @@ function setup(store = new Map()) {
   const Notes = vm.runInContext(`${source}\nNotes`, context);
   const view = new Notes();
   view.init();
-  return { view, cx, store, tasks, select(id) { active = { id, name: id, active: true }; } };
+  return {
+    view, cx, store, tasks,
+    select(id) { active = { id, name: id, active: true }; },
+    render() {
+      rendering = true;
+      try { return view.render(cx); }
+      finally { rendering = false; }
+    },
+  };
 }
 
 test("autosaves Markdown, restores on a fresh instance, and keeps spaces separate", async () => {
@@ -39,11 +55,29 @@ test("autosaves Markdown, restores on a fresh instance, and keeps spaces separat
   assert.equal(first.status, "Autosaved locally");
   assert.equal(app.store.get("space:one"), first.editor.text);
   app.select("two");
-  app.view.render(app.cx);
+  app.render();
   await Promise.all(app.tasks);
   assert.equal(app.view.pads.get("two").text, "");
   assert.equal(setup(app.store).view.pads.get("one").text, first.editor.text);
   assert.equal(app.view.pads.get("two").text, "");
+});
+
+test("first opening in another space creates its editor after render, once", async () => {
+  const app = setup();
+  const original = app.view.pads.get("one").editor;
+  app.select("two");
+  app.render();
+  app.render();
+  assert.equal(app.tasks.length, 1);
+  assert.equal(app.view.pads.has("two"), false);
+  await Promise.all(app.tasks);
+  assert.equal(app.view.openErrors.size, 0);
+  assert.equal(app.view.pads.has("two"), true);
+  app.render();
+  app.select("one");
+  app.render();
+  assert.equal(app.view.pads.get("one").editor, original);
+  assert.equal(app.tasks.length, 1);
 });
 
 test("an edit callback saves to its own space even after selection changes", async () => {

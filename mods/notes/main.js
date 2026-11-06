@@ -5,6 +5,8 @@ import { spaces, theme, settings, run } from "herdr";
 export default class Notes extends View {
   init() {
     this.pads = new Map();
+    this.opening = new Set();
+    this.openErrors = new Map();
     this.preview = false;
     const space = spaces().find(s => s.active);
     if (space) this.pad(space);
@@ -47,7 +49,19 @@ export default class Notes extends View {
     if (!space) return div().size_full().p(16).text_color(t.muted).child("Open a space to keep notes.");
     const pad = this.pads.get(space.id);
     if (!pad) {
-      cx.spawn(async (cx) => { this.pad(space); cx.notify(); });
+      if (this.openErrors.has(space.id)) {
+        return div().size_full().p(16).text_color(t.muted).child(`Could not open notes: ${this.openErrors.get(space.id)}`);
+      }
+      if (!this.opening.has(space.id)) {
+        this.opening.add(space.id);
+        cx.spawn(async (cx) => {
+          await cx.sleep(0);
+          try { this.pad(space); }
+          catch (error) { this.openErrors.set(space.id, String(error)); }
+          this.opening.delete(space.id);
+          cx.notify();
+        });
+      }
       return div().size_full().p(16).text_color(t.muted).child("Opening notes…");
     }
     const tasks = pad.text.match(/^\s*[-*+] \[[ xX]\] /gm) ?? [];

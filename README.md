@@ -42,7 +42,7 @@ Switching layouts does not delete notes. Back up your Herdr home before removing
 node --test tests/notes.test.mjs
 ```
 
-The tests exercise the actual Notes class with mocked native controls and storage: fresh-instance restoration, space isolation, delayed edits after a space change, and visible storage failures. Native checks and screenshots validate loading and appearance. They do not automate physical keyboard interaction or an app restart.
+The tests exercise the actual Notes class with mocked native controls and storage: fresh-instance restoration, space isolation, creation after the render phase, cached reopening, delayed edits after a space change, and visible storage failures. Native checks and screenshots validate loading and appearance. They do not automate physical keyboard interaction or an app restart.
 
 ## Attribution
 
