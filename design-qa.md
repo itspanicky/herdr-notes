@@ -12,7 +12,7 @@ Compared the selected Quiet Margin mock with a crop of the actual native panel a
 - Document margins and top spacing are increased. Headings are neutral and smaller than the preceding implementation; tasks use smaller native controls.
 - Appearance, Reveal file and Copy path fit inside the menu without clipping. The path stays hidden while writing.
 - The source editor fills the document region with no paragraph frames. Font family and size are applied to the raw text as well as the rendered view.
-- The native panel retains the person's Herdr palette and configured UI size. This intentionally differs from the mock's fixed sage accent and illustrative typography scale. Native Markdown links follow the host renderer.
+- The native panel retains the person's Herdr palette and configured terminal font and size. This intentionally differs from the mock's fixed sage accent and illustrative typography scale. Native Markdown links follow the host renderer.
 - Reference shows an active source heading amid formatted text. Current native capture is a reading view; source is still whole-document while editing. That feasibility limit was established before this visual pass and remains documented.
 
 ## Validation

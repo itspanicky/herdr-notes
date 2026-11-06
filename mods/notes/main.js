@@ -168,9 +168,9 @@ export default class Notes extends View {
     const t = theme(), space = spaces().find(s => s.active), s = settings();
     if (!space) return div().size_full().p(18).text_color(t.muted).child("Open a space to keep notes.");
     const pad = this.pads.get(space.id) ?? this.load(space, cx);
-    const size = this.prefs.size ?? s.ui_font_size ?? s.font_size ?? 14;
+    const size = this.prefs.size ?? s.font_size ?? 14;
     const leading = this.prefs.leading ?? 1.6;
-    const font = this.prefs.font || s.ui_font_family || "Geist";
+    const font = this.prefs.font || s.font_family || "JetBrains Mono";
     const button = (id, label, action, selected = false) => div().id(id).px(7).py(4).rounded(6).cursor_pointer()
       .when(selected, el => el.bg(t.selected)).text_color(selected ? t.foreground : t.muted)
       .hover(el => el.bg(t.hover).text_color(t.foreground)).on_click(action).child(label);

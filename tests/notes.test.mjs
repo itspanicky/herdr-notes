@@ -213,12 +213,12 @@ test("font and line-spacing preferences persist independently of note text", asy
 });
 
 
-test("the raw editor inherits Herdr's normalized font settings and follows Aa changes", async () => {
-  const app = setup({ settings: { ui_font_family: "Geist Mono", ui_font_size: 15 } });
+test("the raw editor inherits Herdr's terminal font and follows appearance overrides", async () => {
+  const app = setup({ settings: { font_family: "JetBrains Mono", font_size: 15, ui_font_family: "Geist", ui_font_size: 13 } });
   await app.settle();
   const pad = app.view.pads.get("one");
   app.view.begin(pad, app.cx); app.render();
-  assert.equal(app.elements.get("raw-editor").styles.font_family, "Geist Mono");
+  assert.equal(app.elements.get("raw-editor").styles.font_family, "JetBrains Mono");
   assert.equal(app.elements.get("raw-editor").styles.text_size, 15);
   app.view.preference("font", "Georgia", app.cx);
   app.view.preference("size", 20, app.cx);
