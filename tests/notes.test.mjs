@@ -8,6 +8,7 @@ const source = readFileSync(new URL("../mods/notes/main.js", import.meta.url), "
   .replace(/^import .*;\n/gm, "").replace("export default class Notes", "class Notes");
 
 function setup({ store = new Map(), files = new Map(), settings = {} } = {}) {
+  let changed, readGate;
   let active = { id: "one", name: "First space", active: true };
   let rendering = false, failWrites = false, writeGate, clipboard, flushError, flushGate;
   const tasks = [], timers = [], elements = new Map(), writes = [];
@@ -56,7 +57,8 @@ function setup({ store = new Map(), files = new Map(), settings = {} } = {}) {
     spaces: () => [active], settings: () => settings, theme: () => ({}), run() {},
     window: () => ({ platform: "macos" }), home: () => "/home/test",
     exec: async () => ({ code: 0 }),
-    readTextFile: async path => files.get(path) ?? null,
+    watchFolder: () => new Promise(resolve => { changed = resolve; }),
+    readTextFile: async path => { if (readGate) await readGate; return files.get(path) ?? null; },
     writeTextFile: async (path, text, expected) => {
       if (writeGate) await writeGate;
       if (failWrites) throw new Error("disk unavailable");
@@ -70,10 +72,11 @@ function setup({ store = new Map(), files = new Map(), settings = {} } = {}) {
   return {
     view, cx, store, files, tasks, writes, elements, blocks, toggleTask, get clipboard() { return clipboard; },
     select(id) { active = { id, name: id, active: true }; },
+    changed() { changed([path]); }, gateRead(promise) { readGate = promise; },
     failWrites(value) { failWrites = value; }, gate(promise) { writeGate = promise; },
     failFlush(error) { flushError = error; }, gateFlush(promise) { flushGate = promise; },
     async settle() {
-      for (let count = 0; count !== tasks.length;) { count = tasks.length; await Promise.all(tasks); }
+      for (let count = 0; count !== tasks.length;) { count = tasks.length; await Promise.race([Promise.all(tasks), new Promise(resolve => setImmediate(resolve))]); }
     },
     async saveTimers() { for (const timer of timers.splice(0)) if (!timer.cancelled) timer.fn(cx); await this.settle(); },
     render() {
@@ -308,5 +311,58 @@ test("Zen and Markdown colors change preview styling and persist without changin
   app.elements.get("style-zen").handlers.on_click({}, app.cx);
   assert.equal(app.view.prefs.style, "zen");
   assert.equal(app.files.get(path), text);
+  assert.equal(app.writes.length, 0);
+});
+
+
+test("external edits refresh the preview and retained editor without writing the file", async () => {
+  const app = setup({ files: new Map([[path, "Original"]]) }); await app.settle();
+  const pad = app.view.pads.get("one");
+  app.view.begin(pad, app.cx);
+  app.files.set(path, "# Agent update\n\n- [ ] Next task\n");
+  app.changed(); await app.settle();
+  assert.equal(pad.text, app.files.get(path));
+  assert.equal(pad.disk, pad.text);
+  assert.equal(pad.input.value(), pad.text);
+  assert.equal(pad.editing, true);
+  assert.equal(app.writes.length, 0);
+  assert.equal(app.store.has("draft:one"), false);
+  app.view.finish(pad, app.cx); app.render();
+  assert.equal(app.blocks(pad.text)[0].type, "heading");
+});
+
+test("external edits preserve an unsaved local draft and refuse to overwrite the agent file", async () => {
+  const app = setup({ files: new Map([[path, "Original"]]) }); await app.settle();
+  const pad = app.view.pads.get("one");
+  app.view.change(pad, "My draft", app.cx);
+  app.files.set(path, "Agent update"); app.changed(); await app.settle();
+  assert.equal(pad.text, "My draft");
+  assert.equal(pad.disk, "Original");
+  assert.match(pad.error, /changed outside Herdr/);
+  await app.saveTimers();
+  assert.equal(app.files.get(path), "Agent update");
+  assert.equal(JSON.parse(app.store.get("draft:one")).text, "My draft");
+});
+
+test("typing while an external refresh is pending keeps the new local draft", async () => {
+  const app = setup({ files: new Map([[path, "Original"]]) }); await app.settle();
+  const pad = app.view.pads.get("one");
+  let release; app.gateRead(new Promise(resolve => { release = resolve; }));
+  app.files.set(path, "Agent update"); app.changed(); await app.settle();
+  app.view.change(pad, "New local draft", app.cx);
+  release(); await app.settle();
+  assert.equal(pad.text, "New local draft");
+  assert.equal(pad.disk, "Original");
+  assert.match(pad.error, /changed outside Herdr/);
+});
+
+test("external edits refresh cached notes in their own space and handle an empty file", async () => {
+  const second = path.replace("one.md", "two.md");
+  const app = setup({ files: new Map([[path, "First"], [second, "Second"]]) }); await app.settle();
+  app.select("two"); app.render(); await app.settle();
+  app.files.set(path, "Updated first"); app.files.set(second, "");
+  app.changed(); await app.settle();
+  assert.equal(app.view.pads.get("one").text, "Updated first");
+  assert.equal(app.view.pads.get("two").text, "");
   assert.equal(app.writes.length, 0);
 });

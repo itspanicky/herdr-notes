@@ -1,6 +1,6 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, TextareaState, Textarea, TextView, InputState, Input, Checkbox } from "gpui-base";
-import { spaces, theme, settings, home, window, exec, readTextFile, writeTextFile } from "herdr";
+import { spaces, theme, settings, home, window, exec, readTextFile, writeTextFile, watchFolder } from "herdr";
 import { blocks, toggleTask } from "./markdown.js";
 
 export default class Notes extends View {
@@ -17,6 +17,7 @@ export default class Notes extends View {
     this.directory = this.prepareDirectory();
     const space = spaces().find(s => s.active);
     if (space) this.load(space, cx);
+    this.watch(cx);
   }
 
   async prepareDirectory() {
@@ -54,6 +55,49 @@ export default class Notes extends View {
       cx.notify();
     });
     return pad;
+  }
+
+  watch(cx) {
+    cx.spawn(async (cx) => {
+      try {
+        await this.directory;
+        for (;;) {
+          const changed = watchFolder(this.dir);
+          this.refresh(cx);
+          await changed;
+        }
+      } catch (error) {
+        this.watchError = `Live updates unavailable: ${error}`;
+        cx.notify();
+      }
+    });
+  }
+
+  refresh(cx) {
+    for (const pad of this.pads.values()) {
+      if (pad.loading || pad.saving || pad.refreshing) continue;
+      pad.refreshing = true;
+      const base = pad.disk;
+      cx.spawn(async (cx) => {
+        try {
+          const disk = await readTextFile(pad.path);
+          if (!pad.saving && pad.disk === base && disk !== base) {
+            if (pad.text !== (base ?? "")) {
+              pad.error = "The file changed outside Herdr. Your draft is kept locally; merge it before retrying.";
+            } else {
+              pad.disk = disk;
+              pad.text = disk ?? "";
+              pad.error = null;
+              if (pad.input && pad.input.value() !== pad.text) pad.input.set_value(pad.text);
+            }
+          }
+        } catch (error) {
+          pad.error = `Could not refresh note: ${error}`;
+        }
+        pad.refreshing = false;
+        cx.notify();
+      });
+    }
   }
 
   change(pad, text, cx) {
@@ -96,7 +140,7 @@ export default class Notes extends View {
       pad.input.set_soft_wrap(true);
       pad.input.set_selected_range({ start: pad.text.length, end: pad.text.length });
       pad.input.on("change", (_e, cx) => {
-        if (pad.editing) this.change(pad, pad.input.value(), cx);
+        if (pad.editing && pad.input.value() !== pad.text) this.change(pad, pad.input.value(), cx);
       });
       pad.input.on("blur", (_e, cx) => this.finish(pad, cx));
     } else if (pad.input.value() !== pad.text) pad.input.set_value(pad.text);
@@ -234,6 +278,7 @@ export default class Notes extends View {
         .child(button("notes-menu", "…", (_e, cx) => {
           this.menu = !this.menu; if (!this.menu) this.appearance = false; cx.notify();
         }, this.menu).accessibility_label("Notes menu").tooltip("Appearance and file actions")))
+      .when(Boolean(this.watchError), el => el.child(div().px(24).py(10).text_size(11).text_color(t.ansi1).child(this.watchError)))
       .when(Boolean(pad.error), el => el.child(v_flex().px(24).py(10).gap(6).text_size(11).text_color(t.ansi1)
         .child(pad.error).child(button("notes-retry", "Retry", (_e, cx) => {
           if (pad.id) this.save(pad, cx);

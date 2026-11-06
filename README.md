@@ -38,7 +38,7 @@ The macOS path is verified in the running app. Linux and Windows have platform b
 
 On first opening a space, an existing Markdown file takes precedence. Otherwise its previous local-storage pad is copied into a new file. The old pad is retained unchanged. Migration is lazy: opening a space migrates its pad.
 
-Edits get an immediate local recovery draft and a file save after 350ms of inactivity. Writes are serialized and atomic, and require the expected previous file contents. An external edit is not overwritten. On failure, the draft remains in the editor and local storage; Retry repeats the guarded save. Conflicts require manually merging the external file and draft. External edits are picked up when this mod reloads; this version does not watch external editors live.
+Edits get an immediate local recovery draft and a file save after 350ms of inactivity. Writes are serialized and atomic, and require the expected previous file contents. An external edit is not overwritten. On failure, the draft remains in the editor and local storage; Retry repeats the guarded save. Conflicts require manually merging the external file and draft. The native folder watcher reloads externally edited files into clean notes, including an open source editor. If you have unsaved local changes, it keeps your draft and shows a conflict instead. A watcher failure is shown in the panel.
 
 Fonts and recovery state stay in Herdr-managed local storage. Different space IDs mean different files, even for the same folder. Renaming a space does not change its file path. The host's text-file read limit is 1 MiB.
 
@@ -50,7 +50,7 @@ To return to the default layout, run `herdr-app do layout.switch '{"name":"main"
 node --test tests/notes.test.mjs
 ```
 
-Seventeen tests exercise the actual Notes class with mocked controls and file storage: migration, restoration, space isolation, safe creation, continuous editing, automatic preview, task changes, failures, draft recovery, conflict protection, overlapping saves appearance preferences, reversible clearing, backup failures and edits during clearing. Native runtime checks and disposable demo screenshots also verify the formatted view, full-note text control and font menu. Physical keyboard input and an app restart are not automated.
+Twenty-one tests exercise the actual Notes class with mocked controls and file storage: migration, restoration, space isolation, safe creation, continuous editing, automatic preview, task changes, failures, draft recovery, conflict protection, overlapping saves appearance preferences, reversible clearing, backup failures and edits during clearing, live file updates and concurrent local/external edits. Native runtime checks and disposable demo screenshots also verify the formatted view, full-note text control and font menu. Physical keyboard input and an app restart are not automated.
 
 The preview uses disposable demo text and is cropped to exclude private workspace content. Neither live notes nor personal settings are in this repository.
 

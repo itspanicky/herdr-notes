@@ -26,3 +26,7 @@ Compared the selected Quiet Margin mock with a crop of the actual native panel a
 ## Clear and appearance update
 
 The updated mod passes the native check and seventeen automated tests. Clear and undo were exercised with mocked storage, including reloading the Notes class and keeping edits made after clearing. The appearance test checks actual rendered heading colors and persisted preferences. A fresh native menu screenshot could not be verified: the app screenshot command returned an older window frame. Prior visual checks above predate these added controls.
+
+## External file update fix
+
+Twenty-one tests pass, including clean external refresh into the retained editor, unsaved-draft conflicts, typing during a refresh, separate spaces and empty files. Native folder events are used instead of polling. These new cases use mocked native storage and watcher events; they do not constitute physical UI verification.
