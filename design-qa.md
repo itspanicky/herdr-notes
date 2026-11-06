@@ -18,7 +18,11 @@ Compared the selected Quiet Margin mock with a crop of the actual native panel a
 ## Validation
 
 - `herdr-app check` passes for both custom mods.
-- Twelve tests pass, including migration, recovery, file conflicts, concurrent saves, continuous editing, fonts and menu/copy behavior.
+- Seventeen tests pass, including migration, recovery, file conflicts, concurrent saves, continuous editing, fonts, menu/copy behavior, both preview styles, durable clear/undo, backup failure and concurrent editing.
 - Native reading, menu, appearance and editing states were rendered and visually inspected using a disposable fixture. Physical pointer/keyboard interaction with the real Notes pad was not automated.
 - No new Notes error was reported by the running app. A pre-existing remote-machine connectivity error remains outside this change.
 - Only the sanitized demo panel is included in the public preview. Raw terminal-containing app frames remain outside the repository. Temporary demo UI is removed after verification; demo Markdown is retained in case it was edited.
+
+## Clear and appearance update
+
+The updated mod passes the native check and seventeen automated tests. Clear and undo were exercised with mocked storage, including reloading the Notes class and keeping edits made after clearing. The appearance test checks actual rendered heading colors and persisted preferences. A fresh native menu screenshot could not be verified: the app screenshot command returned an older window frame. Prior visual checks above predate these added controls.

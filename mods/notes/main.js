@@ -44,6 +44,7 @@ export default class Notes extends View {
           }
         }
         pad.id = space.id;
+        pad.cleared = localStorage.getItem(`cleared:${space.id}`);
         pad.loading = false;
         if (!pad.error && pad.disk !== pad.text) this.save(pad, cx);
       } catch (error) {
@@ -116,6 +117,39 @@ export default class Notes extends View {
     cx.notify();
   }
 
+  clear(pad, cx) {
+    if (!pad.id || !pad.text || pad.clearing) return;
+    const text = pad.text;
+    pad.clearing = true;
+    cx.spawn(async (cx) => {
+      try {
+        localStorage.setItem(`cleared:${pad.id}`, text);
+        await localStorage.flush();
+        if (pad.text !== text) throw new Error("The note changed. Try again");
+        pad.cleared = text;
+        this.finish(pad, cx);
+        this.change(pad, "", cx);
+        this.begin(pad, cx);
+      } catch (error) {
+        if (pad.cleared == null) localStorage.removeItem(`cleared:${pad.id}`);
+        else localStorage.setItem(`cleared:${pad.id}`, pad.cleared);
+        pad.error = `Could not clear note: ${error}. Your note was kept.`;
+      }
+      pad.clearing = false;
+      cx.notify();
+    });
+  }
+
+  undoClear(pad, cx) {
+    if (pad.cleared == null) return;
+    const text = pad.cleared + (pad.text ? `\n\n${pad.text}` : "");
+    this.finish(pad, cx);
+    this.change(pad, text, cx);
+    localStorage.removeItem(`cleared:${pad.id}`);
+    pad.cleared = null;
+    this.begin(pad, cx);
+  }
+
   reveal(pad, cx) {
     cx.spawn(async (cx) => {
       try {
@@ -132,12 +166,13 @@ export default class Notes extends View {
   }
 
   section(pad, block, t, size) {
+    const colorful = this.prefs.style === "markdown";
     let content;
     if (block.type === "heading") {
       const level = block.text.match(/^\s*(#+)/)[1].length;
       content = div().pt(level === 1 ? 10 : 6).pb(3).font_semibold()
         .text_size(size + (level === 1 ? 8 : level === 2 ? 4 : 2))
-        .text_color(t.foreground)
+        .text_color(colorful ? (level === 1 ? t.ansi5 : level === 2 ? t.ansi4 : t.ansi6) : t.foreground)
         .child(block.text.replace(/^\s*#+\s+/, "").trimEnd());
     } else if (block.type === "task") {
       const match = block.text.match(/^(\s*[-*+] \[)([ xX])\] (.*)/);
@@ -145,7 +180,8 @@ export default class Notes extends View {
       content = h_flex().items_start().gap(9).py(2)
         .child(Checkbox.new(`task-${pad.id}-${block.start}`).id(`task-${block.start}`).checked(checked)
           .accessibility_label(match[3]).mt(3).size(15).flex_none().rounded(4)
-          .border_1().border_color(checked ? t.accent : t.input).bg(checked ? t.accent : t.background)
+          .border_1().border_color(checked ? (colorful ? t.ansi6 : t.accent) : t.input)
+          .bg(checked ? (colorful ? t.ansi6 : t.accent) : t.background)
           .text_color(t.background).text_size(12).items_center().justify_center().flex().cursor_pointer()
           .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
           .on_change((_checked, cx) => {
@@ -156,7 +192,8 @@ export default class Notes extends View {
     } else {
       content = div().min_w(0)
         .when(block.type === "code", el => el.rounded(6).text_color(t.muted))
-        .when(block.type === "quote", el => el.pl(12).border_l(2).border_color(t.accent).text_color(t.muted))
+        .when(block.type === "code" && colorful, el => el.pl(8).border_l(2).border_color(t.ansi3))
+        .when(block.type === "quote", el => el.pl(12).border_l(2).border_color(colorful ? t.ansi5 : t.accent).text_color(t.muted))
         .child(TextView.markdown(`note-block-${pad.id}-${block.start}`,
           block.type === "quote" ? block.text.replace(/^ {0,3}> ?/gm, "") : block.text).selectable(false)
           .on_link_click((url, cx) => { cx.open_url(url); cx.stop_propagation(); }));
@@ -210,6 +247,10 @@ export default class Notes extends View {
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .child(menuRow("notes-appearance", "Appearance", (_e, cx) => { this.appearance = !this.appearance; cx.notify(); }))
         .when(this.appearance, el => el.child(v_flex().px(6).py(8).gap(9)
+          .child(div().text_size(10).text_color(t.dim).child("Preview style"))
+          .child(h_flex().gap(4).text_size(11)
+            .child(button("style-zen", "Zen", (_e, cx) => this.preference("style", "zen", cx), this.prefs.style !== "markdown"))
+            .child(button("style-markdown", "Markdown colors", (_e, cx) => this.preference("style", "markdown", cx), this.prefs.style === "markdown")))
           .child(h_flex().gap(5).items_center().text_size(11)
             .child(button("font-herdr", "Follow Herdr", (_e, cx) => {
               this.fontInput.set_value(""); this.preference("font", "", cx);
@@ -224,6 +265,12 @@ export default class Notes extends View {
             button(`leading-${value}`, label, (_e, cx) => this.preference("leading", value, cx), leading === value))))))
         .child(menuRow("notes-reveal", "Reveal file", (_e, cx) => { closeMenu(cx); this.reveal(pad, cx); }))
         .child(menuRow("notes-copy-path", "Copy path", (_e, cx) => { cx.write_to_clipboard(pad.path); closeMenu(cx); }))
+        .when(Boolean(pad.id && pad.text), el => el.child(menuRow("notes-clear", "Clear note", (_e, cx) => {
+          closeMenu(cx); this.clear(pad, cx);
+        }).text_color(t.ansi1)))
+        .when(pad.cleared != null, el => el.child(menuRow("notes-undo-clear", "Undo clear", (_e, cx) => {
+          closeMenu(cx); this.undoClear(pad, cx);
+        })))
         .child(div().px(12).py(6).text_size(10).text_color(t.dim).truncate().tooltip(pad.path)
           .child(pad.path.replace(this.dir, "…/Herdr/notes")))));
   }

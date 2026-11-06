@@ -8,11 +8,11 @@ Quiet Margin: one continuous Markdown note per space, beside Files and Changes. 
 
 Click **Notes** beside Files and Changes to open or close the sidebar. Click the note to edit the whole document. The first edit starts with the cursor at the end so you can add a thought immediately. Later edits reuse the same native text control. Click outside the page, press Escape, or use the platform modifier plus Enter to return to formatted reading. All edits autosave; there is no Save button.
 
-Open **… → Appearance** to set a font family, size (11–24px), and Compact/Normal/Roomy line spacing. **Follow Herdr** resets those overrides. By default, Notes uses Herdr's terminal font and size (JetBrains Mono by default). Neutral headings, smaller checkboxes, links and quotes follow the current theme. The 36px header has only Notes, the space name and the menu; there is no permanent footer, document icon, Aa button or close button. Close the panel with its Notes tab-bar button.
+Open **… → Appearance** to set a font family, size (11–24px), and Compact/Normal/Roomy line spacing. **Follow Herdr** resets those overrides. By default, Notes uses Herdr's terminal font and size (JetBrains Mono by default). Choose **Preview style → Zen** for neutral headings or **Markdown colors** for theme-based heading, checkbox, quote and code accents. Zen is the default. Both use the same font in the source editor; these colors apply to the formatted preview. The 36px header has only Notes, the space name and the menu; there is no permanent footer, document icon, Aa button or close button. Close the panel with its Notes tab-bar button.
 
 In the formatted view, task checkboxes update the Markdown directly. Clicking text anywhere else opens the same whole-note editor. Headings and paragraphs are never separate editing targets. This is automatic preview when you leave the editor. Cursor-based live preview, where only the active line shows source, is not implemented: Herdr 0.1.13 exposes neither a cursor-position getter nor a selection-change event to mods. The source editor supports normal text selection, native editing and soft wrapping. Task-list continuation and a formatting toolbar are not implemented.
 
-The same **…** menu contains **Reveal file**, **Copy path**, and an abbreviated path with the full path in its tooltip. Saving status appears only during a file write, and failures stay visible beside Retry.
+The same **…** menu contains **Clear note**, **Undo clear**, **Reveal file**, **Copy path**, and an abbreviated path with the full path in its tooltip. Clear note empties the current space’s note after saving an undo backup to disk, with no confirmation. Undo clear restores it, including after a mod reload, and keeps anything written since the clear. The Markdown file remains in place. There is one undo backup per space, replaced by the next successful clear. Saving status appears only during a file write, and failures stay visible beside Retry.
 
 ## Install
 
@@ -50,7 +50,7 @@ To return to the default layout, run `herdr-app do layout.switch '{"name":"main"
 node --test tests/notes.test.mjs
 ```
 
-Twelve tests exercise the actual Notes class with mocked controls and file storage: migration, restoration, space isolation, safe creation, continuous editing, automatic preview, task changes, failures, draft recovery, conflict protection, overlapping saves and appearance preferences. Native runtime checks and disposable demo screenshots also verify the formatted view, full-note text control and font menu. Physical keyboard input and an app restart are not automated.
+Seventeen tests exercise the actual Notes class with mocked controls and file storage: migration, restoration, space isolation, safe creation, continuous editing, automatic preview, task changes, failures, draft recovery, conflict protection, overlapping saves appearance preferences, reversible clearing, backup failures and edits during clearing. Native runtime checks and disposable demo screenshots also verify the formatted view, full-note text control and font menu. Physical keyboard input and an app restart are not automated.
 
 The preview uses disposable demo text and is cropped to exclude private workspace content. Neither live notes nor personal settings are in this repository.
 

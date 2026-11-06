@@ -9,7 +9,7 @@ const source = readFileSync(new URL("../mods/notes/main.js", import.meta.url), "
 
 function setup({ store = new Map(), files = new Map(), settings = {} } = {}) {
   let active = { id: "one", name: "First space", active: true };
-  let rendering = false, failWrites = false, writeGate, clipboard;
+  let rendering = false, failWrites = false, writeGate, clipboard, flushError, flushGate;
   const tasks = [], timers = [], elements = new Map(), writes = [];
   const cx = {
     notify() { assert.equal(rendering, false, "notify must run outside render"); },
@@ -51,7 +51,7 @@ function setup({ store = new Map(), files = new Map(), settings = {} } = {}) {
     TextareaState: { new: input }, InputState: { new: input },
     localStorage: {
       getItem: key => store.get(key) ?? null, setItem: (key, value) => store.set(key, value),
-      removeItem: key => store.delete(key), flush: async () => {},
+      removeItem: key => store.delete(key), flush: async () => { if (flushGate) await flushGate; if (flushError) throw flushError; },
     },
     spaces: () => [active], settings: () => settings, theme: () => ({}), run() {},
     window: () => ({ platform: "macos" }), home: () => "/home/test",
@@ -71,6 +71,7 @@ function setup({ store = new Map(), files = new Map(), settings = {} } = {}) {
     view, cx, store, files, tasks, writes, elements, blocks, toggleTask, get clipboard() { return clipboard; },
     select(id) { active = { id, name: id, active: true }; },
     failWrites(value) { failWrites = value; }, gate(promise) { writeGate = promise; },
+    failFlush(error) { flushError = error; }, gateFlush(promise) { flushGate = promise; },
     async settle() {
       for (let count = 0; count !== tasks.length;) { count = tasks.length; await Promise.all(tasks); }
     },
@@ -240,6 +241,72 @@ test("the single menu exposes appearance and file actions without editing the no
   assert.equal(app.clipboard, path);
   assert.equal(app.view.menu, false);
   assert.equal(app.view.pads.get("one").editing, undefined);
+  assert.equal(app.files.get(path), text);
+  assert.equal(app.writes.length, 0);
+});
+
+test("clearing saves an undo snapshot first and restores it after a fresh instance", async () => {
+  const original = "# Keep me\n\nA note with whitespace  \n";
+  const app = setup({ files: new Map([[path, original]]) }); await app.settle();
+  const pad = app.view.pads.get("one");
+  app.view.clear(pad, app.cx); await app.settle(); await app.saveTimers();
+  assert.equal(app.files.get(path), "");
+  assert.equal(app.store.get("cleared:one"), original);
+  assert.equal(pad.input.value(), "");
+  assert.equal(pad.editing, true);
+  const restored = setup({ store: app.store, files: app.files }); await restored.settle();
+  restored.view.undoClear(restored.view.pads.get("one"), restored.cx);
+  await restored.saveTimers();
+  assert.equal(restored.files.get(path), original);
+  assert.equal(restored.store.has("cleared:one"), false);
+});
+
+test("undo clear preserves text added afterward and belongs only to that space", async () => {
+  const app = setup({ files: new Map([[path, "Original"]]) }); await app.settle();
+  const pad = app.view.pads.get("one");
+  app.view.clear(pad, app.cx); await app.settle();
+  app.view.change(pad, "A new thought", app.cx);
+  app.select("two"); app.render(); await app.settle();
+  assert.equal(app.view.pads.get("two").cleared, null);
+  app.view.undoClear(pad, app.cx); await app.saveTimers();
+  assert.equal(app.files.get(path), "Original\n\nA new thought");
+  assert.equal(app.view.pads.get("two").text, "");
+});
+
+test("clear leaves the note intact when its durable undo backup fails", async () => {
+  const app = setup({ files: new Map([[path, "Do not lose me"]]) }); await app.settle();
+  app.failFlush(new Error("backup unavailable"));
+  const pad = app.view.pads.get("one");
+  app.view.clear(pad, app.cx); await app.settle();
+  assert.equal(pad.text, "Do not lose me");
+  assert.equal(app.files.get(path), "Do not lose me");
+  assert.match(pad.error, /Could not clear note.*backup unavailable/);
+});
+
+test("clear aborts if the user edits while the undo snapshot is being flushed", async () => {
+  const app = setup({ files: new Map([[path, "Original"]]) }); await app.settle();
+  let release; app.gateFlush(new Promise(resolve => { release = resolve; }));
+  const pad = app.view.pads.get("one");
+  app.view.clear(pad, app.cx);
+  app.view.change(pad, "Newer text", app.cx);
+  release(); await app.settle(); await app.saveTimers();
+  assert.equal(pad.text, "Newer text");
+  assert.equal(app.files.get(path), "Newer text");
+});
+
+test("Zen and Markdown colors change preview styling and persist without changing source", async () => {
+  const text = "# Title\n\n## Section\n";
+  const app = setup({ files: new Map([[path, text]]) }); await app.settle();
+  const pad = app.view.pads.get("one"), heading = app.blocks(text)[0];
+  const palette = { foreground: "#ffffff", ansi5: "#bb88cc", ansi4: "#6688cc", ansi6: "#88bbcc" };
+  assert.equal(app.view.section(pad, heading, palette, 13).nodes[0].styles.text_color, palette.foreground);
+  app.view.menu = true; app.view.appearance = true; app.render();
+  app.elements.get("style-markdown").handlers.on_click({}, app.cx);
+  assert.equal(app.view.section(pad, heading, palette, 13).nodes[0].styles.text_color, palette.ansi5);
+  const restored = setup({ store: app.store, files: app.files }); await restored.settle();
+  assert.equal(restored.view.prefs.style, "markdown");
+  app.elements.get("style-zen").handlers.on_click({}, app.cx);
+  assert.equal(app.view.prefs.style, "zen");
   assert.equal(app.files.get(path), text);
   assert.equal(app.writes.length, 0);
 });
